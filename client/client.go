@@ -72,20 +72,17 @@ func readConnection(conn net.Conn) {
 		var buffer []byte
 		for scanner.Scan() {
 			if len(buffer) == 12 { //  header length = 12 bytes
-				var left *int
-				var right *int
-				tmpLeft, tmpRight := 0, 4
+				left := 0
 
-				left, right = &tmpLeft, &tmpRight
+				var svcId int32
+				var bodyLength int32
+				var requestId int32
 
-				//svcId := int32(binary.BigEndian.Uint32(buffer[left:right]))
-				*left, *right = *left+ByteSize, *right+ByteSize
-
-				bodyLength := int32(binary.BigEndian.Uint32(buffer[*left:*right]))
-				*left, *right = *left+ByteSize, *right+ByteSize
-
-				//requestId := int32(binary.BigEndian.Uint32(buffer[left:right]))
-				*left, *right = *left+ByteSize, *right+ByteSize
+				svcId, left = readInt32InPacket(buffer, left)
+				svcId = svcId
+				bodyLength, left = readInt32InPacket(buffer, left)
+				requestId, left = readInt32InPacket(buffer, left)
+				requestId = requestId
 
 				b := scanner.Bytes()
 				buffer = append(buffer, b[0])
@@ -96,30 +93,23 @@ func readConnection(conn net.Conn) {
 
 					if int32(len(buffer)) == (bodyLength + 3*ByteSize) {
 
-						var returnCode *int32
-						//int32(binary.BigEndian.Uint32(buffer[left:right]))
-						readInt32InPacket(returnCode, buffer, left, right)
-						//left, right = left+ByteSize, right+ByteSize
-						//
-						//clientIdLen := int32(binary.BigEndian.Uint32(buffer[left:right]))
-						//left, right = left+ByteSize, right+int(clientIdLen)
-						//
-						//clientId := buffer[left:right]
-						//left, right = left+int(clientIdLen), right+ByteSize
-						//
-						//clientType := int32(binary.BigEndian.Uint32(buffer[left:right]))
-						//left, right = left+ByteSize, right+ByteSize
-						//
-						//usernameLen := int32(binary.BigEndian.Uint32(buffer[left:right]))
-						//left, right = left+ByteSize, right+int(usernameLen)
-						//
-						//username := buffer[left:right]
-						//left, right = left+int(usernameLen), right+ByteSize
-						//
-						//expiresIn := int32(binary.BigEndian.Uint32(buffer[left:right]))
-						//left, right = left+ByteSize, right+(2*ByteSize)
-						//
-						//userId := int64(binary.BigEndian.Uint64(buffer[left:right]))
+						var returnCode int32
+						var clientIdLen int32
+						var clientId []byte
+						var clientType int32
+						var usernameLen int32
+						var username []byte
+						var expiresIn int32
+						var userId int64
+
+						returnCode, left = readInt32InPacket(buffer, left)
+						clientIdLen, left = readInt32InPacket(buffer, left)
+						clientId, left = readSliceByteInPacket(buffer, left, clientIdLen)
+						clientType, left = readInt32InPacket(buffer, left)
+						usernameLen, left = readInt32InPacket(buffer, left)
+						username, left = readSliceByteInPacket(buffer, left, usernameLen)
+						expiresIn, left = readInt32InPacket(buffer, left)
+						userId, left = readInt64InPacket(buffer, left)
 
 						//fmt.Printf("<header> ::= ")
 						//fmt.Printf("%d\n", svcId)
@@ -128,13 +118,13 @@ func readConnection(conn net.Conn) {
 
 						//fmt.Println("<svc_ok_response_body> ::= ")
 						fmt.Printf("return_сode: %d\n", returnCode)
-						//fmt.Printf("<%08x>", clientIdLen)
-						//fmt.Printf("client_id: %s\n", clientId)
-						//fmt.Printf("client_type: %d\n", clientType)
-						////fmt.Printf("<%08x>", usernameLen)
-						//fmt.Printf("username: %s\n", username)
-						//fmt.Printf("expires_in: %d\n", expiresIn)
-						//fmt.Printf("user_id: %d\n", userId)
+						fmt.Printf("<%08x>", clientIdLen)
+						fmt.Printf("client_id: %s\n", clientId)
+						fmt.Printf("client_type: %d\n", clientType)
+						//fmt.Printf("<%08x>", usernameLen)
+						fmt.Printf("username: %s\n", username)
+						fmt.Printf("expires_in: %d\n", expiresIn)
+						fmt.Printf("user_id: %d\n", userId)
 					}
 				}
 				buffer = buffer[:0]
@@ -180,8 +170,20 @@ func handleCommands(text string) bool {
 	return false
 }
 
-func readInt32InPacket(int32Var *int32, buffer []byte, left *int, right *int) {
-	integer := int32(binary.BigEndian.Uint32(buffer[*left:*right]))
-	int32Var = &integer
-	*left, *right = *left+4, *right+4
+func readInt32InPacket(buffer []byte, left int) (int32, int) {
+	integer32 := int32(binary.BigEndian.Uint32(buffer[left : left+4]))
+	left = left + 4
+	return integer32, left
+}
+
+func readInt64InPacket(buffer []byte, left int) (int64, int) {
+	integer64 := int64(binary.BigEndian.Uint64(buffer[left : left+8]))
+	left = left + 8
+	return integer64, left
+}
+
+func readSliceByteInPacket(buffer []byte, left int, bytesNumb int32) ([]byte, int) {
+	byteArray := buffer[left : left+int(bytesNumb)]
+	left = left + int(bytesNumb)
+	return byteArray, left
 }
