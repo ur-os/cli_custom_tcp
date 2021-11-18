@@ -11,7 +11,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -21,32 +20,18 @@ import (
 	"time"
 )
 
-//var host = flag.String("host", "localhost", "The hostname or IP to connect to; defaults to \"localhost\".")
-//var port = flag.Int("port", 8000, "The port to connect to; defaults to 8000.")
+const MinInt8, MaxInt8 = -(-128), 127
+const MinInt32, MaxInt32 = -(-2147483648), 2147483647
+const MinInt64, MaxInt64 = -(-9223372036854775808), 9223372036854775807
 
-type IpProtoHeader struct {
-	svcId int32
-	bodyLength int32
-	requestId int32
-}
-
-type IpProtoBody struct {
-	strLength int32
-	str string  // TODO: check is this correct interpretation of "int8+" from technical task
-}
-
-type IpProtoPacket struct {
-	header IpProtoHeader
-	body IpProtoBody
-}
-
+const ByteSize = 4
 
 func main() {
+
 	flag.Parse()
-	argsName := os.Args[1:]  // TODO: exception len less than 4
+	argsName := os.Args[1:] // TODO: exception len less than 4
 	hostName := argsName[0]
 	portName := argsName[1]
-
 
 	dest := hostName + ":" + portName
 	fmt.Printf("Connecting to %s...\n", dest)
@@ -55,7 +40,7 @@ func main() {
 
 	if err != nil {
 		if _, t := err.(*net.OpError); t {
-			fmt.Println("Сonnection not established")
+			fmt.Println("Some problem connecting.")
 		} else {
 			fmt.Println("Unknown error: " + err.Error())
 		}
@@ -66,7 +51,7 @@ func main() {
 
 	for {
 		reader := bufio.NewReader(os.Stdin)
-		fmt.Print("> ")
+		fmt.Print("")
 		text, _ := reader.ReadString('\n')
 
 		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
@@ -81,17 +66,93 @@ func main() {
 func readConnection(conn net.Conn) {
 	for {
 		scanner := bufio.NewScanner(conn)
-		buf := new(bytes.Buffer)
-		binary.Read(conn, binary.LittleEndian, buf)
+
+		scanner.Split(bufio.ScanBytes)
+
+		var buffer []byte
+		for scanner.Scan() {
+			if len(buffer) == 12 { //  header length = 12 bytes
+				var left *int
+				var right *int
+				tmpLeft, tmpRight := 0, 4
+
+				left, right = &tmpLeft, &tmpRight
+
+				//svcId := int32(binary.BigEndian.Uint32(buffer[left:right]))
+				*left, *right = *left+ByteSize, *right+ByteSize
+
+				bodyLength := int32(binary.BigEndian.Uint32(buffer[*left:*right]))
+				*left, *right = *left+ByteSize, *right+ByteSize
+
+				//requestId := int32(binary.BigEndian.Uint32(buffer[left:right]))
+				*left, *right = *left+ByteSize, *right+ByteSize
+
+				b := scanner.Bytes()
+				buffer = append(buffer, b[0])
+
+				for scanner.Scan() {
+					b = scanner.Bytes()
+					buffer = append(buffer, b[0])
+
+					if int32(len(buffer)) == (bodyLength + 3*ByteSize) {
+
+						var returnCode *int32
+						//int32(binary.BigEndian.Uint32(buffer[left:right]))
+						readInt32InPacket(returnCode, buffer, left, right)
+						//left, right = left+ByteSize, right+ByteSize
+						//
+						//clientIdLen := int32(binary.BigEndian.Uint32(buffer[left:right]))
+						//left, right = left+ByteSize, right+int(clientIdLen)
+						//
+						//clientId := buffer[left:right]
+						//left, right = left+int(clientIdLen), right+ByteSize
+						//
+						//clientType := int32(binary.BigEndian.Uint32(buffer[left:right]))
+						//left, right = left+ByteSize, right+ByteSize
+						//
+						//usernameLen := int32(binary.BigEndian.Uint32(buffer[left:right]))
+						//left, right = left+ByteSize, right+int(usernameLen)
+						//
+						//username := buffer[left:right]
+						//left, right = left+int(usernameLen), right+ByteSize
+						//
+						//expiresIn := int32(binary.BigEndian.Uint32(buffer[left:right]))
+						//left, right = left+ByteSize, right+(2*ByteSize)
+						//
+						//userId := int64(binary.BigEndian.Uint64(buffer[left:right]))
+
+						//fmt.Printf("<header> ::= ")
+						//fmt.Printf("%d\n", svcId)
+						//fmt.Printf("%d\n", bodyLength)
+						//fmt.Printf("%d\n", requestId)
+
+						//fmt.Println("<svc_ok_response_body> ::= ")
+						fmt.Printf("return_сode: %d\n", returnCode)
+						//fmt.Printf("<%08x>", clientIdLen)
+						//fmt.Printf("client_id: %s\n", clientId)
+						//fmt.Printf("client_type: %d\n", clientType)
+						////fmt.Printf("<%08x>", usernameLen)
+						//fmt.Printf("username: %s\n", username)
+						//fmt.Printf("expires_in: %d\n", expiresIn)
+						//fmt.Printf("user_id: %d\n", userId)
+					}
+				}
+				buffer = buffer[:0]
+			}
+
+			// Get Bytes and display the byte.
+			b := scanner.Bytes()
+			buffer = append(buffer, b[0])
+
+		}
 
 		for {
 			ok := scanner.Scan()
 			text := scanner.Text()
-			bytes := scanner.Bytes()
 
-			command := handleCommands(text, bytes)
+			command := handleCommands(text)
 			if !command {
-				fmt.Printf("%s\n", text)
+				fmt.Printf("%s\n> ", text)
 			}
 
 			if !ok {
@@ -102,14 +163,8 @@ func readConnection(conn net.Conn) {
 	}
 }
 
-func handleCommands(text string, bytes []byte) bool {
+func handleCommands(text string) bool {
 	r, err := regexp.Compile("^%.*%$")
-	result := regexp.MustCompile(`\n`)
-	//resultBytes := bytes
-
-
-
-	fmt.Println(result.Split(text, -1))
 	if err == nil {
 		if r.MatchString(text) {
 
@@ -119,11 +174,14 @@ func handleCommands(text string, bytes []byte) bool {
 				os.Exit(0)
 			}
 
-			fmt.Println("handleCommands end")
 			return true
 		}
 	}
-	fmt.Println("handleCommands end")
 	return false
 }
 
+func readInt32InPacket(int32Var *int32, buffer []byte, left *int, right *int) {
+	integer := int32(binary.BigEndian.Uint32(buffer[*left:*right]))
+	int32Var = &integer
+	*left, *right = *left+4, *right+4
+}
