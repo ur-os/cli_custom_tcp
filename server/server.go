@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+//go:generate mockgen -source=server.go -destination=mocks/mock.go
+
 var addr = flag.String("addr", "", "The address to listen to; default is \"\" (all interfaces).")
 var port = flag.Int("port", 8000, "The port to listen on; default is 8000.")
 
@@ -205,4 +207,9 @@ func buildPacketErrorResponse(
 	packet = append(packet, body...)
 
 	return packet
+}
+
+type server interface {
+	Write(packet []byte) error
+	Read(packet []byte) error
 }

@@ -11,6 +11,8 @@ import (
 	"time"
 )
 
+//go:generate mockgen -source=client.go -destination=mocks/mock.go
+
 const ByteSize = 4
 
 func main() {
@@ -124,6 +126,7 @@ func readConnection(conn net.Conn) {
 							fmt.Printf("username: %s\n", username)
 							fmt.Printf("expires_in: %d\n", expiresIn)
 							fmt.Printf("user_id: %d", userId)
+							//  TODO: conn.Close()
 							os.Exit(0)
 						} else {
 							var errorStringLen int32
@@ -134,6 +137,7 @@ func readConnection(conn net.Conn) {
 
 							stdOutCodeError(returnCode)
 							fmt.Printf("message: %s", errorString)
+							//  TODO: conn.Close()
 							os.Exit(0)
 						}
 					}
