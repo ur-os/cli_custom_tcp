@@ -1,12 +1,3 @@
-/*
-A very simple TCP server written in Go.
-
-This is a toy project that I used to learn the fundamentals of writing
-Go code and doing some really basic network stuff.
-
-Maybe it will be fun for you to read. It's not meant to be
-particularly idiomatic, or well-written for that matter.
-*/
 package main
 
 import (
@@ -22,10 +13,6 @@ import (
 
 var addr = flag.String("addr", "", "The address to listen to; default is \"\" (all interfaces).")
 var port = flag.Int("port", 8000, "The port to listen on; default is 8000.")
-
-const MinInt8, MaxInt8 = -(-128), 127
-const MinInt32, MaxInt32 = -(-2147483648), 2147483647
-const MinInt64, MaxInt64 = -(-9223372036854775808), 9223372036854775807
 
 func main() {
 	flag.Parse()
@@ -83,21 +70,19 @@ func handleMessage(message string, conn net.Conn) {
 			fmt.Println("< " + "%quit%")
 			conn.Write([]byte("%quit%\n"))
 			os.Exit(0)
-		case message == "abracadabra xxx":
-			fmt.Println("CUBE_OAUTH2_ERR_BAD_SCOPE")
-			conn.Write([]byte("error: CUBE_OAUTH2_ERR_BAD_SCOPE\n message: bad scope\n"))
-		case message == "1":
-			fmt.Println("TEST_BINARY_STREAM")
-
-			var packet []byte
-			//bsInt8 := make([]byte, 1)
-			//bsInt32 := make([]byte, 4)
-			//bsInt64 := make([]byte, 8)
-
-			packet = buildPacket(
+		case message == "\u0000\u0000\u0000\u0002\u0000\u0000\u0000\u001A\u0000\u0000\u0000\u0001\u0000\u0000\u0000\u0002\u0000\u0000\u0000\vabracadabra\u0000\u0000\u0000\u0003xxx":
+			packet := buildPacketErrorResponse(
+				1,
+				2,
+				1,
+				[]byte("token not found"),
+			)
+			conn.Write(packet)
+		case message == "\u0000\u0000\u0000\u0002\u0000\u0000\u0000\u001B\u0000\u0000\u0000\u0001\u0000\u0000\u0000\u0002\u0000\u0000\u0000\vabracadabra\u0000\u0000\u0000\u0004test":
+			packet := buildPacketOkResponse(
 				-15,
 				0x00000002,
-				0x00000001,
+				0,
 				[]byte("fkjas;fosdjfofaso;fdjsofasdfisdjfoidsfjoa"),
 				0x00000001,
 				[]byte("ur_0s"),
@@ -105,18 +90,23 @@ func handleMessage(message string, conn net.Conn) {
 				0x0000000000000001,
 			)
 
-			size, _ := conn.Write(packet)
-			fmt.Println(size)
-			fmt.Println("TEST_BINARY_STREAM_END")
+			conn.Write(packet)
 		default:
-			conn.Write([]byte("Unrecognized command.\n"))
+			packet := buildPacketErrorResponse(
+				1,
+				2,
+				1337,
+				[]byte("Sorry im just a mock-server. Sun is white, river is blue; mocked functions send const's you"),
+			)
+			conn.Write(packet)
 		}
 	}
 }
 
-func buildPacket(
+func buildPacketOkResponse(
 	svcId int32,
 	requestId int32,
+
 	returnCode int32,
 	clientId []byte,
 	clientType int32,
@@ -125,82 +115,94 @@ func buildPacket(
 	userId int64,
 ) []byte {
 
-	//  TODO: to process exceptions
-
-	//bsInt8 := make([]byte, 1)
 	bsInt32 := make([]byte, 4)
 	bsInt64 := make([]byte, 8)
 
 	var packet []byte
 	var body []byte
-	//var header []byte
 
 	//
-	// body
+	//  body filling
 	//
 	binary.BigEndian.PutUint32(bsInt32, uint32(returnCode))
-	for _, character := range bsInt32 {
-		body = append(body, character)
-	}
+	body = append(body, bsInt32...)
 
 	binary.BigEndian.PutUint32(bsInt32, uint32(len(clientId)))
-	for _, character := range bsInt32 {
-		body = append(body, character)
-	}
-	for _, oneByte := range clientId {
-		body = append(body, oneByte)
-	}
+	body = append(body, bsInt32...)
+	body = append(body, clientId...)
 
 	binary.BigEndian.PutUint32(bsInt32, uint32(clientType))
-	for _, character := range bsInt32 {
-		body = append(body, character)
-	}
+	body = append(body, bsInt32...)
 
 	binary.BigEndian.PutUint32(bsInt32, uint32(len(username)))
-	for _, character := range bsInt32 {
-		body = append(body, character)
-	}
-	for _, oneByte := range username {
-		body = append(body, oneByte)
-	}
+	body = append(body, bsInt32...)
+	body = append(body, username...)
 
 	binary.BigEndian.PutUint32(bsInt32, uint32(expiresIn))
-	for _, character := range bsInt32 {
-		body = append(body, character)
-	}
+	body = append(body, bsInt32...)
 
 	binary.BigEndian.PutUint64(bsInt64, uint64(userId))
-	for _, character := range bsInt64 {
-		body = append(body, character)
-	}
+	body = append(body, bsInt64...)
 
 	//
-	// header
+	//  header filling
 	//
 	binary.BigEndian.PutUint32(bsInt32, uint32(svcId))
-	for _, character := range bsInt32 {
-		packet = append(packet, character)
-	}
-	fmt.Println(svcId)
+	packet = append(packet, bsInt32...)
 
-	//  bodyLength
-	binary.BigEndian.PutUint32(bsInt32, uint32(len(body)))
-	for _, character := range bsInt32 {
-		packet = append(packet, character)
-	}
+	binary.BigEndian.PutUint32(bsInt32, uint32(len(body))) // bodyLength
+	packet = append(packet, bsInt32...)
 
 	binary.BigEndian.PutUint32(bsInt32, uint32(requestId))
-	for _, character := range bsInt32 {
-		packet = append(packet, character)
-	}
+	packet = append(packet, bsInt32...)
 
-	//for _, character := range body {
-	//	packet = append(packet, character)
-	//}
-
+	//
+	//  packet = header + body
+	//
 	packet = append(packet, body...)
 
-	fmt.Println(packet)
+	return packet
+}
+
+func buildPacketErrorResponse(
+	svcId int32,
+	requestId int32,
+
+	returnCode int32,
+	errorString []byte,
+) []byte {
+
+	bsInt32 := make([]byte, 4)
+
+	var packet []byte
+	var body []byte
+
+	//
+	//  body filling
+	//
+	binary.BigEndian.PutUint32(bsInt32, uint32(returnCode))
+	body = append(body, bsInt32...)
+
+	binary.BigEndian.PutUint32(bsInt32, uint32(len(errorString)))
+	body = append(body, bsInt32...)
+	body = append(body, errorString...)
+
+	//
+	//  header filling
+	//
+	binary.BigEndian.PutUint32(bsInt32, uint32(svcId))
+	packet = append(packet, bsInt32...)
+
+	binary.BigEndian.PutUint32(bsInt32, uint32(len(body))) // bodyLength
+	packet = append(packet, bsInt32...)
+
+	binary.BigEndian.PutUint32(bsInt32, uint32(requestId))
+	packet = append(packet, bsInt32...)
+
+	//
+	//  packet = header + body
+	//
+	packet = append(packet, body...)
 
 	return packet
 }

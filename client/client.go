@@ -1,12 +1,3 @@
-/*
-A very simple TCP client written in Go.
-
-This is a toy project that I used to learn the fundamentals of writing
-Go code and doing some really basic network stuff.
-
-Maybe it will be fun for you to read. It's not meant to be
-particularly idiomatic, or well-written for that matter.
-*/
 package main
 
 import (
@@ -20,10 +11,6 @@ import (
 	"time"
 )
 
-const MinInt8, MaxInt8 = -(-128), 127
-const MinInt32, MaxInt32 = -(-2147483648), 2147483647
-const MinInt64, MaxInt64 = -(-9223372036854775808), 9223372036854775807
-
 const ByteSize = 4
 
 func main() {
@@ -34,7 +21,7 @@ func main() {
 	portName := argsName[1]
 
 	dest := hostName + ":" + portName
-	fmt.Printf("Connecting to %s...\n", dest)
+	//fmt.Printf("Connecting to %s...\n", dest)
 
 	conn, err := net.Dial("tcp", dest)
 
@@ -50,16 +37,28 @@ func main() {
 	go readConnection(conn)
 
 	for {
+		params := append([]byte(argsName[2]), byte(' '))
+		params = append(params, []byte(argsName[3])...)
+		params = append(params, byte('\n'))
+		packet := buildPacketRequest(
+			0x00000002,
+			1,
+			0x00000002,
+			[]byte(argsName[2]),
+			[]byte(argsName[3]),
+		)
+		packet = append(packet, byte('\n'))
+
+		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		_, err = conn.Write(packet)
+
+		if err != nil {
+			fmt.Println("Error writing to stream.")
+		}
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print("")
 		text, _ := reader.ReadString('\n')
-
-		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
-		_, err := conn.Write([]byte(text))
-		if err != nil {
-			fmt.Println("Error writing to stream.")
-			break
-		}
+		text = text
 	}
 }
 
@@ -71,18 +70,25 @@ func readConnection(conn net.Conn) {
 
 		var buffer []byte
 		for scanner.Scan() {
-			if len(buffer) == 12 { //  header length = 12 bytes
+			if len(buffer) == 16 { //  header length = 12 bytes + return_code = 4 bytes
 				left := 0
 
 				var svcId int32
 				var bodyLength int32
 				var requestId int32
+				var returnCode int32
 
 				svcId, left = readInt32InPacket(buffer, left)
 				svcId = svcId
 				bodyLength, left = readInt32InPacket(buffer, left)
 				requestId, left = readInt32InPacket(buffer, left)
 				requestId = requestId
+				returnCode, left = readInt32InPacket(buffer, left)
+
+				//fmt.Printf("<header> ::= ")
+				//fmt.Printf("%d\n", svcId)
+				//fmt.Printf("%d\n", bodyLength)
+				//fmt.Printf("%d\n", requestId)
 
 				b := scanner.Bytes()
 				buffer = append(buffer, b[0])
@@ -92,63 +98,52 @@ func readConnection(conn net.Conn) {
 					buffer = append(buffer, b[0])
 
 					if int32(len(buffer)) == (bodyLength + 3*ByteSize) {
+						if returnCode == 0x00000000 {
+							var clientIdLen int32
+							var clientId []byte
+							var clientType int32
+							var usernameLen int32
+							var username []byte
+							var expiresIn int32
+							var userId int64
 
-						var returnCode int32
-						var clientIdLen int32
-						var clientId []byte
-						var clientType int32
-						var usernameLen int32
-						var username []byte
-						var expiresIn int32
-						var userId int64
+							clientIdLen, left = readInt32InPacket(buffer, left)
+							clientId, left = readSliceByteInPacket(buffer, left, clientIdLen)
+							clientType, left = readInt32InPacket(buffer, left)
+							usernameLen, left = readInt32InPacket(buffer, left)
+							username, left = readSliceByteInPacket(buffer, left, usernameLen)
+							expiresIn, left = readInt32InPacket(buffer, left)
+							userId, left = readInt64InPacket(buffer, left)
 
-						returnCode, left = readInt32InPacket(buffer, left)
-						clientIdLen, left = readInt32InPacket(buffer, left)
-						clientId, left = readSliceByteInPacket(buffer, left, clientIdLen)
-						clientType, left = readInt32InPacket(buffer, left)
-						usernameLen, left = readInt32InPacket(buffer, left)
-						username, left = readSliceByteInPacket(buffer, left, usernameLen)
-						expiresIn, left = readInt32InPacket(buffer, left)
-						userId, left = readInt64InPacket(buffer, left)
+							//fmt.Println("<svc_ok_response_body> ::= ")
+							fmt.Printf("return_сode: %d\n", returnCode)
+							//fmt.Printf("<%08x>", clientIdLen)
+							fmt.Printf("client_id: %s\n", clientId)
+							fmt.Printf("client_type: %d\n", clientType)
+							//fmt.Printf("<%08x>", usernameLen)
+							fmt.Printf("username: %s\n", username)
+							fmt.Printf("expires_in: %d\n", expiresIn)
+							fmt.Printf("user_id: %d", userId)
+							os.Exit(0)
+						} else {
+							var errorStringLen int32
+							var errorString []byte
 
-						//fmt.Printf("<header> ::= ")
-						//fmt.Printf("%d\n", svcId)
-						//fmt.Printf("%d\n", bodyLength)
-						//fmt.Printf("%d\n", requestId)
+							errorStringLen, left = readInt32InPacket(buffer, left)
+							errorString, left = readSliceByteInPacket(buffer, left, errorStringLen)
 
-						//fmt.Println("<svc_ok_response_body> ::= ")
-						fmt.Printf("return_сode: %d\n", returnCode)
-						fmt.Printf("<%08x>", clientIdLen)
-						fmt.Printf("client_id: %s\n", clientId)
-						fmt.Printf("client_type: %d\n", clientType)
-						//fmt.Printf("<%08x>", usernameLen)
-						fmt.Printf("username: %s\n", username)
-						fmt.Printf("expires_in: %d\n", expiresIn)
-						fmt.Printf("user_id: %d\n", userId)
+							stdOutCodeError(returnCode)
+							fmt.Printf("message: %s", errorString)
+							os.Exit(0)
+						}
 					}
 				}
 				buffer = buffer[:0]
 			}
 
-			// Get Bytes and display the byte.
 			b := scanner.Bytes()
 			buffer = append(buffer, b[0])
 
-		}
-
-		for {
-			ok := scanner.Scan()
-			text := scanner.Text()
-
-			command := handleCommands(text)
-			if !command {
-				fmt.Printf("%s\n> ", text)
-			}
-
-			if !ok {
-				fmt.Println("Reached EOF on server connection.")
-				break
-			}
 		}
 	}
 }
@@ -163,7 +158,6 @@ func handleCommands(text string) bool {
 				fmt.Println("\b\bServer is leaving. Hanging up.")
 				os.Exit(0)
 			}
-
 			return true
 		}
 	}
@@ -186,4 +180,71 @@ func readSliceByteInPacket(buffer []byte, left int, bytesNumb int32) ([]byte, in
 	byteArray := buffer[left : left+int(bytesNumb)]
 	left = left + int(bytesNumb)
 	return byteArray, left
+}
+
+func stdOutCodeError(code int32) {
+	switch code {
+	case 0x00000001:
+		fmt.Printf("error: CUBE_OAUTH2_ERR_TOKEN_NOT_FOUND\n")
+	case 0x00000002:
+		fmt.Printf("error: CUBE_OAUTH2_ERR_DB_ERROR\n")
+	case 0x00000003:
+		fmt.Printf("error: CUBE_OAUTH2_ERR_UNKNOWN_MSG\n")
+	case 0x00000004:
+		fmt.Printf("error: CUBE_OAUTH2_ERR_BAD_PACKET\n")
+	case 0x00000005:
+		fmt.Printf("error: CUBE_OAUTH2_ERR_BAD_CLIENT\n")
+	case 0x00000006:
+		fmt.Printf("error: CUBE_OAUTH2_ERR_BAD_SCOPE\n")
+	default:
+		fmt.Printf("error: CUBE_OAUTH2_UNKNOWN_ERROR\n")
+	}
+}
+
+func buildPacketRequest(
+	svcId int32,
+	requestId int32,
+
+	svcMsg int32,
+	token []byte,
+	scope []byte,
+) []byte {
+
+	bsInt32 := make([]byte, 4)
+
+	var packet []byte
+	var body []byte
+
+	//
+	//  body filling
+	//
+	binary.BigEndian.PutUint32(bsInt32, uint32(svcMsg))
+	body = append(body, bsInt32...)
+
+	binary.BigEndian.PutUint32(bsInt32, uint32(len(token)))
+	body = append(body, bsInt32...)
+	body = append(body, token...)
+
+	binary.BigEndian.PutUint32(bsInt32, uint32(len(scope)))
+	body = append(body, bsInt32...)
+	body = append(body, scope...)
+
+	//
+	//  header filling
+	//
+	binary.BigEndian.PutUint32(bsInt32, uint32(svcId))
+	packet = append(packet, bsInt32...)
+
+	binary.BigEndian.PutUint32(bsInt32, uint32(len(body))) // bodyLength
+	packet = append(packet, bsInt32...)
+
+	binary.BigEndian.PutUint32(bsInt32, uint32(requestId))
+	packet = append(packet, bsInt32...)
+
+	//
+	//  packet = header + body
+	//
+	packet = append(packet, body...)
+
+	return packet
 }
