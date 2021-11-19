@@ -1,16 +1,11 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"encoding/binary"
 	"flag"
-	"fmt"
-	"log"
+	"io/ioutil"
 	"net"
-	"os/exec"
-	"strconv"
-	"time"
-
 	"testing"
 )
 
@@ -18,54 +13,49 @@ var addr = flag.String("addr", "", "The address to listen to; default is \"\" (a
 var port = flag.Int("port", 8000, "The port to listen on; default is 8000.")
 
 func TestUnit(t *testing.T) {
+
+	packet := buildPacketErrorResponse(
+		1,
+		2,
+		1,
+		[]byte("token not found"),
+	)
+
 	go func() {
-		flag.Parse()
-		src := *addr + ":" + strconv.Itoa(*port)
-		listener, err1 := net.Listen("tcp", src)
-		if err1 != nil {
-			fmt.Printf("Some connection error: %s\n", err1)
+		conn, err := net.Dial("tcp", ":3000")
+		if err != nil {
+			t.Fatal(err)
 		}
-		defer listener.Close()
+		defer conn.Close()
 
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				fmt.Printf("Some connection error: %s\n", err)
-			}
-			scanner := bufio.NewScanner(conn)
-
-			for {
-				ok := scanner.Scan()
-
-				if !ok {
-					break
-				}
-
-				message := scanner.Text()
-
-				if message == "\u0000\u0000\u0000\u0002\u0000\u0000\u0000\u001A\u0000\u0000\u0000\u0001\u0000\u0000\u0000\u0002\u0000\u0000\u0000\vabracadabra\u0000\u0000\u0000\u0003xxx" {
-					packet := buildPacketErrorResponse(
-						1,
-						2,
-						1,
-						[]byte("token not found"),
-					)
-					conn.Write(packet)
-				}
-			}
-		}
-
+		conn.Write(packet)
+		//if _, err := fmt.Fprintf(conn, string(packet)); err != nil {
+		//	t.Fatal(err)
+		//}
 	}()
 
-	time.Sleep(3 * time.Second)
-	out, err := exec.Command("./client", "loacalhost", "8000", "abracadabra", "xxx").Output()
+	l, err := net.Listen("tcp", ":3000")
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
-	if string(out) != "if err != nil {\n    log.Fatal(err)\n}" {
-		t.Errorf("Expect %s, got %s",
-			"if err != nil {\n    log.Fatal(err)\n}",
-			out)
+	defer l.Close()
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		buf, err := ioutil.ReadAll(conn)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		result := bytes.Compare(buf, packet)
+		if result != 0 {
+			t.Fatalf("Unexpected message:\nGot:\t\t%s\nExpected:\t%s\n", buf, packet)
+		}
+		return // Done
 	}
 }
 
