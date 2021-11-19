@@ -1,19 +1,43 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
-	"flag"
-	"io/ioutil"
-	"net"
+	"fmt"
+	"os/exec"
 	"testing"
 )
 
-var addr = flag.String("addr", "", "The address to listen to; default is \"\" (all interfaces).")
-var port = flag.Int("port", 8000, "The port to listen on; default is 8000.")
+func TestOkResponse(t *testing.T) {
+	packet := buildPacketOkResponse(
+		0x00000002,
+		0x00000001,
+		0x00000000,
+		[]byte("UID_0001337"),
+		0x00000001,
+		[]byte("richard@mailer.ru.com"),
+		0x00200001,
+		0x0000000000000001,
+	)
 
-func TestUnit(t *testing.T) {
+	server := exec.Command("/home/urick0s/go/src/testMail/dummy_server/dummy_server", string(packet))
+	go server.Run()
 
+	out, err := exec.Command("./client", "localhost", "8000", "abracadabra", "test").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(out) != "return_сode: 0\n"+
+		"client_id: UID_0001337\n"+
+		"client_type: 1\n"+
+		"username: richard@mailer.ru.com\n"+
+		"expires_in: 2097153\n"+
+		"user_id: 1" {
+		t.Fatalf("Unexpected message:\nGot:\t\t%s\nExpected:\t%s\n", out, packet)
+	}
+}
+
+func TestTokenNotFound(t *testing.T) {
 	packet := buildPacketErrorResponse(
 		1,
 		2,
@@ -21,42 +45,19 @@ func TestUnit(t *testing.T) {
 		[]byte("token not found"),
 	)
 
-	go func() {
-		conn, err := net.Dial("tcp", ":3000")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer conn.Close()
+	server := exec.Command("./client", string(packet))
+	go server.Run()
 
-		conn.Write(packet)
-		//if _, err := fmt.Fprintf(conn, string(packet)); err != nil {
-		//	t.Fatal(err)
-		//}
-	}()
-
-	l, err := net.Listen("tcp", ":3000")
+	out, err := exec.Command("./client", "localhost", "8000", "abracadabra", "xxx").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer l.Close()
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			return
-		}
-		defer conn.Close()
 
-		buf, err := ioutil.ReadAll(conn)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		result := bytes.Compare(buf, packet)
-		if result != 0 {
-			t.Fatalf("Unexpected message:\nGot:\t\t%s\nExpected:\t%s\n", buf, packet)
-		}
-		return // Done
+	if string(out) != "error: CUBE_OAUTH2_ERR_TOKEN_NOT_FOUND\n"+
+		"message: token not found" {
+		t.Fatalf("Unexpected message:\nGot:\t\t%s\nExpected:\t%s\n", out, packet)
 	}
+	fmt.Println("123")
 }
 
 func buildPacketOkResponse(

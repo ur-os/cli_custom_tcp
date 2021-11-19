@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"regexp"
 	"time"
 )
 
@@ -18,7 +17,12 @@ const ByteSize = 4
 func main() {
 
 	flag.Parse()
-	argsName := os.Args[1:] // TODO: exception len less than 4
+
+	argsName := os.Args[1:]
+	if len(argsName) < 4 {
+		fmt.Println("Too few arguments.")
+		return
+	}
 	hostName := argsName[0]
 	portName := argsName[1]
 
@@ -29,7 +33,7 @@ func main() {
 
 	if err != nil {
 		if _, t := err.(*net.OpError); t {
-			fmt.Println("Some problem connecting.")
+			fmt.Println("Some problem connecting. " + err.Error())
 		} else {
 			fmt.Println("Unknown error: " + err.Error())
 		}
@@ -51,7 +55,10 @@ func main() {
 		)
 		packet = append(packet, byte('\n'))
 
-		conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		timeoutNonSet := conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+		if timeoutNonSet != nil {
+			fmt.Println("Timeout not set.")
+		}
 		_, err = conn.Write(packet)
 
 		if err != nil {
@@ -150,22 +157,6 @@ func readConnection(conn net.Conn) {
 
 		}
 	}
-}
-
-func handleCommands(text string) bool {
-	r, err := regexp.Compile("^%.*%$")
-	if err == nil {
-		if r.MatchString(text) {
-
-			switch {
-			case text == "%quit%":
-				fmt.Println("\b\bServer is leaving. Hanging up.")
-				os.Exit(0)
-			}
-			return true
-		}
-	}
-	return false
 }
 
 func readInt32InPacket(buffer []byte, left int) (int32, int) {
