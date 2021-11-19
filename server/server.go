@@ -11,8 +11,6 @@ import (
 	"time"
 )
 
-//go:generate mockgen -source=server.go -destination=mocks/mock.go
-
 var addr = flag.String("addr", "", "The address to listen to; default is \"\" (all interfaces).")
 var port = flag.Int("port", 8000, "The port to listen on; default is 8000.")
 
