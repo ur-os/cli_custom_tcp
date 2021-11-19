@@ -108,10 +108,10 @@ func readConnection(conn net.Conn) {
 							var userId int64
 
 							clientIdLen, left = readInt32InPacket(buffer, left)
-							clientId, left = readSliceByteInPacket(buffer, left, clientIdLen)
+							clientId, left = readSliceBytePacket(buffer, left, clientIdLen)
 							clientType, left = readInt32InPacket(buffer, left)
 							usernameLen, left = readInt32InPacket(buffer, left)
-							username, left = readSliceByteInPacket(buffer, left, usernameLen)
+							username, left = readSliceBytePacket(buffer, left, usernameLen)
 							expiresIn, left = readInt32InPacket(buffer, left)
 							userId, left = readInt64InPacket(buffer, left)
 
@@ -130,7 +130,7 @@ func readConnection(conn net.Conn) {
 							var errorString []byte
 
 							errorStringLen, left = readInt32InPacket(buffer, left)
-							errorString, left = readSliceByteInPacket(buffer, left, errorStringLen)
+							errorString, left = readSliceBytePacket(buffer, left, errorStringLen)
 
 							stdOutCodeError(returnCode)
 							fmt.Printf("message: %s", errorString)
@@ -176,7 +176,7 @@ func readInt64InPacket(buffer []byte, left int) (int64, int) {
 	return integer64, left
 }
 
-func readSliceByteInPacket(buffer []byte, left int, bytesNumb int32) ([]byte, int) {
+func readSliceBytePacket(buffer []byte, left int, bytesNumb int32) ([]byte, int) {
 	byteArray := buffer[left : left+int(bytesNumb)]
 	left = left + int(bytesNumb)
 	return byteArray, left
