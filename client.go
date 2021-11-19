@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-//go:generate mockgen -source=client.go -destination=mocks/mock.go
-
 const ByteSize = 4
 
 func main() {
